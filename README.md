@@ -1,66 +1,63 @@
-# UniBot — AI Orientation Assistant for Algerian Bac Students
+# UniBot Backend
 
-A simple Telegram AI chatbot that helps Algerian Baccalaureate students:
+Express + TypeScript API and Telegram bot for the Algerian Bac orientation assistant.
 
-1. Choose university specialties
-2. Understand specialties and career opportunities
-3. Understand university registration procedures
-4. Receive registration updates and announcements
+## Scripts
+| Command | Description |
+| --- | --- |
+| `npm run dev` | Start API + Telegram bot with hot reload (tsx watch) |
+| `npm run build` | Compile TypeScript to `dist/` |
+| `npm start` | Run the compiled server |
+| `npm run migrate` | Create/update database tables (`src/db/schema.sql`) |
+| `npm run seed` | Insert default AI settings + sample articles |
+| `npm run typecheck` | Type-check without emitting |
 
-The bot replies in **Arabic by default** but also understands French and English.
+## Setup
+1. `cp .env.example .env` and fill in values (DB, Telegram token, OpenRouter key, admin creds).
+2. `npm install`
+3. `npm run migrate`
+4. `npm run seed`
+5. `npm run dev`
 
-This is a **single-admin** MVP — no multi-tenancy, no microservices, no queues, no
-vector database. Just a Telegram bot, an Express API, PostgreSQL, and an OpenRouter
-LLM, plus a small Next.js admin panel.
+## API
 
-```
-Telegram Bot ──► Express Backend ──► PostgreSQL
-                       │
-                       └──► OpenRouter (LLM)
-Admin (Next.js) ──► Express Backend
-```
+Base URL: `http://localhost:4000`
 
-## Project structure
+`GET /health` — liveness probe (public).
 
-```
-ai-agent-university-students/
-├── backend/          Node + Express + TypeScript: REST API + Telegram bot
-│   └── src/
-│       ├── config/   Environment & settings loading
-│       ├── db/       Postgres pool, schema, migrations, seed
-│       ├── services/ AI (OpenRouter), knowledge base, settings, users
-│       ├── bot/      Telegram bot (grammY) handlers
-│       ├── routes/   Admin REST API
-│       └── middleware/
-└── admin/            Next.js + TailwindCSS admin dashboard
-```
+### Auth
+`POST /api/auth/login` → `{ token, username }`
+Body: `{ "username": "...", "password": "..." }`
 
-## Quick start
+All routes below require header `Authorization: Bearer <token>`.
 
-### 0. Prerequisites
-- Node.js 18+ (tested on 22)
-- A running PostgreSQL database
-- A Telegram bot token from [@BotFather](https://t.me/BotFather)
-- An OpenRouter API key from [openrouter.ai](https://openrouter.ai/keys)
+### Dashboard
+`GET /api/dashboard` — stats + recent users/announcements.
 
-### 1. Backend
-```bash
-cd backend
-cp .env.example .env      # then fill in the values
-npm install
-npm run migrate           # create tables
-npm run seed              # insert default AI settings + sample articles
-npm run dev               # starts API + Telegram bot
-```
+### Articles (knowledge base)
+- `GET /api/articles?category=` — list
+- `GET /api/articles/:id`
+- `POST /api/articles` — `{ title, category, content }`
+- `PUT /api/articles/:id` — `{ title, category, content }`
+- `DELETE /api/articles/:id`
 
-### 2. Admin panel
-```bash
-cd admin
-cp .env.example .env.local # set NEXT_PUBLIC_API_URL (default http://localhost:4000)
-npm install
-npm run dev                # http://localhost:3000
-```
+### Announcements
+- `GET /api/announcements`
+- `POST /api/announcements` — `{ title, message }` (creates, does not send)
+- `POST /api/announcements/:id/send` — broadcast to all Telegram users → `{ delivered, total }`
+- `DELETE /api/announcements/:id`
 
-Log in with the `ADMIN_USERNAME` / `ADMIN_PASSWORD` you set in the backend `.env`.
+### AI settings
+- `GET /api/ai-settings`
+- `PUT /api/ai-settings` — `{ system_prompt, model, temperature }`
 
-See [backend/README.md](backend/README.md) for API details.
+### Users
+- `GET /api/users?limit=&offset=` → `{ users, total }`
+
+## How the AI answers a question
+1. Load AI settings (system prompt, model, temperature) from `ai_settings`.
+2. Keyword-search `articles` (Postgres full-text, ILIKE fallback) for the question.
+3. Build prompt: system prompt + KB context + the student's orientation data + question.
+4. Call OpenRouter (`/chat/completions`) and return the text.
+
+No vector database — keyword search only, by design.

@@ -1,28 +1,25 @@
-# Deploying UniBot to Railway
+# Deploying the UniBot backend to Railway
 
-This monorepo deploys as **3 Railway services in one project**:
+This repo is the **backend only** (Express API + Telegram bot). The app lives at
+the repo root, so Railway auto-detects Node — **no Root Directory setting needed.**
+The admin frontend is a separate project (kept local for now).
 
+Two services in one Railway project:
 1. **Postgres** — managed database (Railway plugin)
-2. **backend** — Express API + Telegram bot (root dir: `backend`)
-3. **admin** — Next.js dashboard (root dir: `admin`)
+2. **backend** — this repo
 
-The bot uses **long polling**, so no webhook or public URL is needed for Telegram
-to work. Migrations + seed run **automatically on every deploy** (idempotent) via
+The bot uses **long polling**, so no webhook/public URL is required for Telegram.
+Migrations + seed run **automatically on every deploy** (idempotent) via
 `npm run start:railway`.
 
 ---
 
-## Step 1 — Create the project & database
-1. Push this repo to GitHub (already done).
-2. On [railway.app](https://railway.app): **New Project → Deploy from GitHub repo** → pick this repo.
-3. In the project: **New → Database → PostgreSQL**. Name it `Postgres`.
+## Step 1 — Project & database
+1. On [railway.app](https://railway.app): **New Project → Deploy from GitHub repo** → pick this repo.
+2. In the project: **New → Database → PostgreSQL** (name it `Postgres`).
 
-## Step 2 — Configure the **backend** service
-Railway created a service from the repo. Open it → **Settings**:
-- **Root Directory:** `backend`
-- (Build & start commands come from `backend/railway.json` automatically.)
-
-Then open **Variables** and add:
+## Step 2 — Backend variables
+Open the backend service → **Variables**:
 
 | Variable | Value |
 | --- | --- |
@@ -34,79 +31,41 @@ Then open **Variables** and add:
 | `ADMIN_USERNAME` | e.g. `admin` |
 | `ADMIN_PASSWORD` | a strong password |
 | `JWT_SECRET` | a long random string |
-| `CORS_ORIGIN` | (fill in Step 4 with the admin URL) |
+| `CORS_ORIGIN` | the admin panel's URL (once it's deployed) |
 
 > Do **not** set `PORT` — Railway injects it and the app reads it automatically.
 
-Under **Settings → Networking**, click **Generate Domain** → copy the backend URL
-(e.g. `https://unibot-backend.up.railway.app`). You'll need it for the admin.
+## Step 3 — Build & start
+Railway's builder (Railpack/Nixpacks) auto-detects this Node app:
+- Build: `npm run build`
+- Start: `npm run start:railway` (runs migrate → seed → start) — defined in `railway.json`.
 
-## Step 3 — Add the **admin** service
-1. In the same project: **New → GitHub Repo** → pick this repo again.
-2. Open it → **Settings → Root Directory:** `admin`
-3. **Variables:**
+If the start command isn't picked up automatically, set it manually under
+**Settings → Deploy → Custom Start Command**: `npm run start:railway`.
 
-| Variable | Value |
-| --- | --- |
-| `NEXT_PUBLIC_API_URL` | the backend public URL from Step 2 |
+**Prefer Docker?** Set **Settings → Build → Builder = Dockerfile**. The root
+`Dockerfile` already auto-runs migrate+seed on start.
 
-> `NEXT_PUBLIC_*` is baked in at **build time**, so set it *before* the first build
-> (if you set it later, trigger a redeploy).
-
-4. **Settings → Networking → Generate Domain** → copy the admin URL.
-
-## Step 4 — Close the loop (CORS)
-Back in the **backend** service → Variables → set:
-
-| Variable | Value |
-| --- | --- |
-| `CORS_ORIGIN` | the admin public URL from Step 3 |
-
-Redeploy the backend.
+## Step 4 — Verify
+- **Health:** open `https://<backend-url>/health` → `{"status":"ok","botEnabled":true}`
+- **Bot:** message your bot → `/start` should reply in Arabic.
 
 ---
 
-## Done — verify
-- **Backend health:** open `https://<backend-url>/health` → `{"status":"ok","botEnabled":true}`
-- **Bot:** message your bot on Telegram → `/start` should reply in Arabic.
-- **Admin:** open the admin URL → log in with `ADMIN_USERNAME` / `ADMIN_PASSWORD`.
-
----
-
-## Alternative: Docker
-
-Each service has a `Dockerfile`, and `docker-compose.yml` runs the whole stack
-(Postgres + backend + admin) locally with one command.
-
+## Local with Docker
 ```bash
-# 1. Fill backend/.env (TELEGRAM_BOT_TOKEN, OPENROUTER_API_KEY, admin creds).
-#    DATABASE_URL is overridden by compose to use the bundled Postgres.
+# Fill .env first (TELEGRAM_BOT_TOKEN, OPENROUTER_API_KEY, admin creds)
 docker compose up --build
 ```
-
-- Admin → http://localhost:3000
-- Backend/API → http://localhost:4000 (health: `/health`)
-- Migrations + seed run automatically when the backend container starts.
-
-Build images individually:
-```bash
-docker build -t unibot-backend ./backend
-docker build -t unibot-admin --build-arg NEXT_PUBLIC_API_URL=https://your-api ./admin
-```
-
-> Railway can deploy straight from these Dockerfiles too — in a service's
-> **Settings → Build**, switch the builder to **Dockerfile** instead of Nixpacks.
-> (The default Nixpacks + `railway.json` path also works; pick one.)
-
----
+Postgres + backend come up together; migrations run automatically.
+API/health → http://localhost:4000.
 
 ## Notes
-- **Private networking:** using `${{Postgres.DATABASE_PRIVATE_URL}}` keeps DB traffic
-  on Railway's internal network (`*.railway.internal`) — faster, free egress, and the
-  URL is never exposed. That's why `PGSSL=false` (internal connections aren't proxied
-  over TLS). If you ever connect over the **public** proxy URL instead, set `PGSSL=true`.
-- **Auto-migrate/seed:** `start:railway` runs `migrate` then `seed` (both idempotent)
-  before starting. Sample articles are only inserted when the `articles` table is empty,
-  so deleting them in the admin won't bring them back on the next deploy.
-- **Scaling note:** the bot's orientation questionnaire state is in-memory, so keep the
-  **backend at 1 replica**. Everything else (data, settings) lives in Postgres.
+- **Private networking:** `${{Postgres.DATABASE_PRIVATE_URL}}` keeps DB traffic on
+  Railway's internal network (`*.railway.internal`) — faster, free, never exposed.
+  That's why `PGSSL=false`. Over the public proxy URL instead, use `PGSSL=true`.
+- **Single replica:** the orientation questionnaire state is in-memory — keep the
+  backend at **1 replica**. All persistent data lives in Postgres.
+- **Frontend:** the admin panel (`admin/`, ignored here) is deployed separately.
+  Point its `NEXT_PUBLIC_API_URL` at this backend's public URL, and set this
+  backend's `CORS_ORIGIN` to the admin's URL.

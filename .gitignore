@@ -29,3 +29,6 @@ Thumbs.db
 # Misc
 coverage/
 *.tsbuildinfo
+
+# Frontend admin panel is kept local-only (separate repo later)
+admin/
