@@ -10,6 +10,10 @@
     "start": "node dist/index.js",
     "migrate": "tsx src/db/migrate.ts",
     "seed": "tsx src/db/seed.ts",
+    "migrate:prod": "node dist/db/migrate.js",
+    "seed:prod": "node dist/db/seed.js",
+    "release": "node dist/db/migrate.js && node dist/db/seed.js",
+    "start:railway": "npm run release && node dist/index.js",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

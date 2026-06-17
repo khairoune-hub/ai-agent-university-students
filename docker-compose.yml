@@ -1,0 +1,55 @@
+# Local one-command stack: Postgres + backend (API+bot) + admin.
+#   docker compose up --build
+#
+# Fill backend/.env first (TELEGRAM_BOT_TOKEN, OPENROUTER_API_KEY, admin creds).
+# DATABASE_URL below is overridden to point at the bundled Postgres container.
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: unibot
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d unibot"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  backend:
+    build: ./backend
+    restart: unless-stopped
+    env_file:
+      - ./backend/.env
+    environment:
+      # Override to use the bundled Postgres (internal compose network)
+      DATABASE_URL: postgres://postgres:postgres@postgres:5432/unibot
+      PGSSL: "false"
+      PORT: "4000"
+      CORS_ORIGIN: http://localhost:3000
+    ports:
+      - "4000:4000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  admin:
+    build:
+      context: ./admin
+      args:
+        # Baked into the client bundle at build time — must be browser-reachable
+        NEXT_PUBLIC_API_URL: http://localhost:4000
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    depends_on:
+      - backend
+
+volumes:
+  pgdata:
