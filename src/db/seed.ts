@@ -17,7 +17,7 @@ const DEFAULT_SYSTEM_PROMPT = `أنت "موجّه"، مساعد ذكي ودود 
 - لا تختلق تخصصات أو جامعات غير موجودة.
 - إن توفّرت بيانات توجيه الطالب (الشعبة، المعدل، الاهتمامات) استعملها لتخصيص إجابتك.`;
 
-const DEFAULT_MODEL = 'openai/gpt-4o-mini';
+const DEFAULT_MODEL = 'nvidia/nemotron-3-ultra-550b-a55b:free';
 const DEFAULT_TEMPERATURE = 0.6;
 
 const SAMPLE_ARTICLES: { title: string; category: string; content: string }[] = [

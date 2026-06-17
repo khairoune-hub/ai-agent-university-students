@@ -7,7 +7,7 @@ const FALLBACK: Omit<AiSettings, 'updated_at'> = {
   id: 1,
   system_prompt:
     'أنت مساعد توجيه ذكي لطلاب البكالوريا في الجزائر. أجب بالعربية بشكل دقيق ومفيد.',
-  model: 'openai/gpt-4o-mini',
+  model: 'nvidia/nemotron-3-ultra-550b-a55b:free',
   temperature: 0.6,
 };
 
