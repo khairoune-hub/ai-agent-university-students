@@ -50,20 +50,31 @@ export async function generateReply(input: AiReplyInput): Promise<string> {
   const settings = await getAiSettings();
   const articles = await searchArticles(input.question);
   const context = buildContext(articles);
+  console.log(
+    `[ai] model=${settings.model} | KB matches=${articles.length} | temp=${settings.temperature}`
+  );
+
+  // Always enforce a concise, well-structured answer on top of the admin's
+  // system prompt — students want short, scannable replies, not essays.
+  const BREVITY =
+    '\n\n[تعليمات الأسلوب] أجب بإيجاز شديد ومباشر: من 3 إلى 6 أسطر كحد أقصى، ' +
+    'أو نقاط قصيرة عند الحاجة. تجنّب المقدمات الطويلة والتكرار، وادخل في صلب الجواب فورًا.';
 
   const systemContent =
     settings.system_prompt +
     (context
       ? `\n\n---\nمعلومات من قاعدة المعارف (استعملها عند الإجابة إن كانت ذات صلة):\n${context}`
-      : '');
+      : '') +
+    BREVITY;
 
   const userContent = input.question + orientationBlock(input.orientation);
 
+  const startedAt = Date.now();
   try {
     const completion = await client.chat.completions.create({
       model: settings.model,
       temperature: settings.temperature,
-      max_tokens: 800,
+      max_tokens: 500,
       messages: [
         { role: 'system', content: systemContent },
         { role: 'user', content: userContent },
@@ -71,14 +82,21 @@ export async function generateReply(input: AiReplyInput): Promise<string> {
     });
 
     const text = completion.choices[0]?.message?.content?.trim();
-    if (text) return text;
+    const ms = Date.now() - startedAt;
+    if (text) {
+      console.log(`[ai] ✓ reply in ${ms}ms (${text.length} chars)`);
+      return text;
+    }
     // Some (often free/queued) models return an empty completion.
-    console.warn(`[ai] Empty completion from model "${settings.model}"`);
+    console.warn(`[ai] ✗ empty completion from "${settings.model}" after ${ms}ms`);
     return 'عذرًا، لم أتمكّن من توليد إجابة الآن. حاول إعادة صياغة سؤالك بعد قليل.';
   } catch (err: any) {
     // Surface the real cause in logs (model not found, rate limit, timeout…)
     const detail = err?.error?.message ?? err?.message ?? String(err);
-    console.error(`[ai] OpenRouter call failed (model "${settings.model}"):`, detail);
+    console.error(
+      `[ai] ✗ OpenRouter failed (model "${settings.model}", ${Date.now() - startedAt}ms):`,
+      detail
+    );
     return 'عذرًا، تعذّر الوصول إلى خدمة الذكاء الاصطناعي حاليًا. حاول مرة أخرى بعد قليل.';
   }
 }

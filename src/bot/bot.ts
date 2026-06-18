@@ -98,6 +98,10 @@ export function createBot(): Bot {
     }
 
     // Normal question → AI.
+    const who = ctx.from.username ? `@${ctx.from.username}` : ctx.from.first_name ?? id;
+    console.log(`[bot] ▶ question from ${who} (${id}): "${text.slice(0, 100)}"`);
+    const startedAt = Date.now();
+
     // Telegram's "typing" action only lasts ~5s, but a reply can take ~10s+,
     // so re-send it every 4s until the answer is ready.
     await ctx.replyWithChatAction('typing');
@@ -111,8 +115,9 @@ export function createBot(): Bot {
         orientation: user?.orientation_data ?? null,
       });
       await ctx.reply(answer);
+      console.log(`[bot] ✓ answered ${who} in ${Date.now() - startedAt}ms`);
     } catch (err) {
-      console.error('[bot] generateReply failed', err);
+      console.error(`[bot] ✗ failed to answer ${who}:`, err);
       await ctx.reply(messages.error);
     } finally {
       clearInterval(typing);
