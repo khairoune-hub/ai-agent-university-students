@@ -17,10 +17,10 @@ const DEFAULT_SYSTEM_PROMPT = `أنت "موجّه"، مساعد ذكي ودود 
 - لا تختلق تخصصات أو جامعات غير موجودة.
 - إن توفّرت بيانات توجيه الطالب (الشعبة، المعدل، الاهتمامات) استعملها لتخصيص إجابتك.`;
 
-// Reliable free model with clean Arabic output (the 550B "ultra" free model is
-// too slow/queued for an interactive bot). Change anytime from the admin panel.
-const DEFAULT_MODEL = 'openai/gpt-oss-120b:free';
-const DEFAULT_TEMPERATURE = 0.6;
+// Fast, reliable, clean Arabic and no reasoning-leak. With OPENAI_API_KEY set,
+// chat goes to OpenAI directly. Change anytime from the admin panel.
+const DEFAULT_MODEL = 'gpt-4o-mini';
+const DEFAULT_TEMPERATURE = 0.5;
 
 const SAMPLE_ARTICLES: { title: string; category: string; content: string }[] = [
   {

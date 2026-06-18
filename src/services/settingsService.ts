@@ -7,8 +7,8 @@ const FALLBACK: Omit<AiSettings, 'updated_at'> = {
   id: 1,
   system_prompt:
     'أنت مساعد توجيه ذكي لطلاب البكالوريا في الجزائر. أجب بالعربية بشكل دقيق ومفيد.',
-  model: 'openai/gpt-oss-120b:free',
-  temperature: 0.6,
+  model: 'gpt-4o-mini',
+  temperature: 0.5,
 };
 
 export async function getAiSettings(): Promise<AiSettings> {

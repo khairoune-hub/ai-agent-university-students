@@ -4,21 +4,30 @@ import { getAiSettings } from './settingsService';
 import { retrieveContext } from './knowledgeBase';
 import { OrientationData } from './types';
 
-// OpenRouter is OpenAI-API-compatible, so we reuse the official SDK with a
-// custom base URL. The model/temperature/system prompt are loaded dynamically
-// from the database on every call (no hardcoded prompts).
+// Chat provider is OpenAI-API-compatible (OpenAI direct or OpenRouter). The
+// base URL + key come from env; the model/temperature/system prompt are loaded
+// dynamically from the database on every call (no hardcoded prompts).
 const client = new OpenAI({
-  apiKey: env.openRouterApiKey,
-  baseURL: 'https://openrouter.ai/api/v1',
-  // Never hang forever: if a model is slow/queued (some free models are),
-  // fail after 45s so the bot can tell the user instead of going silent.
+  apiKey: env.llmApiKey,
+  baseURL: env.llmBaseUrl,
+  // Never hang forever: fail after 45s so the bot can tell the user instead of
+  // going silent.
   timeout: 45_000,
   maxRetries: 1,
-  defaultHeaders: {
-    ...(env.openRouterSiteUrl ? { 'HTTP-Referer': env.openRouterSiteUrl } : {}),
-    'X-Title': env.openRouterAppName,
-  },
+  defaultHeaders: env.llmIsOpenAI
+    ? undefined
+    : {
+        ...(env.openRouterSiteUrl ? { 'HTTP-Referer': env.openRouterSiteUrl } : {}),
+        'X-Title': env.openRouterAppName,
+      },
 });
+
+// When talking to OpenAI directly, strip an "openai/" prefix (OpenRouter naming)
+// so e.g. "openai/gpt-4o-mini" still resolves to "gpt-4o-mini".
+function normalizeModel(model: string): string {
+  if (env.llmIsOpenAI && model.startsWith('openai/')) return model.slice('openai/'.length);
+  return model;
+}
 
 export interface AiReplyInput {
   question: string;
@@ -43,7 +52,7 @@ function orientationBlock(orientation?: OrientationData | null): string {
  *  4. Call OpenRouter and return the text.
  */
 export async function generateReply(input: AiReplyInput): Promise<string> {
-  if (!env.openRouterApiKey) {
+  if (!env.llmApiKey) {
     return 'عذرًا، خدمة الذكاء الاصطناعي غير مهيّأة حاليًا. يرجى المحاولة لاحقًا.';
   }
 
@@ -53,11 +62,13 @@ export async function generateReply(input: AiReplyInput): Promise<string> {
     `[ai] model=${settings.model} | articles=${articleCount} docChunks=${chunkCount} | temp=${settings.temperature}`
   );
 
-  // Always enforce a concise, well-structured answer on top of the admin's
-  // system prompt — students want short, scannable replies, not essays.
+  // Always enforce a SHORT, direct answer on top of the admin's system prompt.
+  // Never reveal reasoning/thinking — only the final answer.
   const BREVITY =
-    '\n\n[تعليمات الأسلوب] أجب بإيجاز شديد ومباشر: من 3 إلى 6 أسطر كحد أقصى، ' +
-    'أو نقاط قصيرة عند الحاجة. تجنّب المقدمات الطويلة والتكرار، وادخل في صلب الجواب فورًا.';
+    '\n\n[تعليمات صارمة للأسلوب]\n' +
+    '- أجب مباشرة بالإجابة النهائية فقط، دون إظهار أي تفكير أو خطوات داخلية.\n' +
+    '- كن مختصرًا جدًا: من سطرين إلى أربعة أسطر، أو نقاط قصيرة عند الحاجة.\n' +
+    '- لا تذكر أسماء المستندات أو الجداول أو عبارات مثل "حسب السياق"، فقط أعطِ الخلاصة المفيدة للطالب.';
 
   const systemContent =
     settings.system_prompt +
@@ -71,9 +82,9 @@ export async function generateReply(input: AiReplyInput): Promise<string> {
   const startedAt = Date.now();
   try {
     const completion = await client.chat.completions.create({
-      model: settings.model,
+      model: normalizeModel(settings.model),
       temperature: settings.temperature,
-      max_tokens: 500,
+      max_tokens: 400,
       messages: [
         { role: 'system', content: systemContent },
         { role: 'user', content: userContent },
