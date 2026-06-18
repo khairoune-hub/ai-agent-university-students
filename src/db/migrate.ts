@@ -1,7 +1,7 @@
 import { readFileSync } from 'fs';
 import { join } from 'path';
 import { pool } from './pool';
-import { EMBEDDING_DIM } from '../config/env';
+import { env, EMBEDDING_DIM } from '../config/env';
 
 // Applies schema.sql. Idempotent — safe to run repeatedly.
 async function migrate() {
@@ -28,6 +28,18 @@ async function migrate() {
       '[migrate] pgvector unavailable — documents will use keyword search only. Reason:',
       err?.message ?? err
     );
+  }
+
+  // Heal a stale model: if we're configured for OpenAI but the saved model is an
+  // OpenRouter-style id (contains "/" or ":"), reset it to a valid OpenAI model.
+  if (env.llmIsOpenAI) {
+    const res = await pool.query(
+      `UPDATE ai_settings SET model = 'gpt-4o-mini', updated_at = now()
+        WHERE id = 1 AND (model LIKE '%/%' OR model LIKE '%:%')`
+    );
+    if (res.rowCount && res.rowCount > 0) {
+      console.log('[migrate] Reset incompatible AI model to gpt-4o-mini (OpenAI).');
+    }
   }
 
   console.log('[migrate] Done.');

@@ -22,11 +22,21 @@ const client = new OpenAI({
       },
 });
 
-// When talking to OpenAI directly, strip an "openai/" prefix (OpenRouter naming)
-// so e.g. "openai/gpt-4o-mini" still resolves to "gpt-4o-mini".
+const OPENAI_FALLBACK_MODEL = 'gpt-4o-mini';
+
+// When talking to OpenAI directly, normalise the model name so a stale or
+// OpenRouter-style id (e.g. "nvidia/...:free" or "openai/gpt-4o-mini") can't
+// break the bot — fall back to a known-good OpenAI model.
 function normalizeModel(model: string): string {
-  if (env.llmIsOpenAI && model.startsWith('openai/')) return model.slice('openai/'.length);
-  return model;
+  if (!env.llmIsOpenAI) return model;
+  let m = (model || '').trim();
+  if (m.startsWith('openai/')) m = m.slice('openai/'.length);
+  // OpenAI model ids never contain "/" or ":" — anything that does is invalid here.
+  if (!m || m.includes('/') || m.includes(':')) {
+    console.warn(`[ai] "${model}" is not a valid OpenAI model — using ${OPENAI_FALLBACK_MODEL}`);
+    return OPENAI_FALLBACK_MODEL;
+  }
+  return m;
 }
 
 export interface AiReplyInput {
@@ -104,7 +114,7 @@ export async function generateReply(input: AiReplyInput): Promise<string> {
     // Surface the real cause in logs (model not found, rate limit, timeout…)
     const detail = err?.error?.message ?? err?.message ?? String(err);
     console.error(
-      `[ai] ✗ OpenRouter failed (model "${settings.model}", ${Date.now() - startedAt}ms):`,
+      `[ai] ✗ AI request failed (model "${settings.model}", ${Date.now() - startedAt}ms):`,
       detail
     );
     return 'عذرًا، تعذّر الوصول إلى خدمة الذكاء الاصطناعي حاليًا. حاول مرة أخرى بعد قليل.';
