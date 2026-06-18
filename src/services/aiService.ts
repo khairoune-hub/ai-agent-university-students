@@ -43,6 +43,8 @@ function normalizeModel(model: string): string {
 export interface AiReplyInput {
   question: string;
   orientation?: OrientationData | null;
+  // Prior conversation turns (oldest → newest), so the bot has context.
+  history?: { role: 'user' | 'assistant'; content: string }[];
 }
 
 function orientationBlock(orientation?: OrientationData | null): string {
@@ -97,8 +99,14 @@ export async function generateReply(input: AiReplyInput): Promise<string> {
 
   const userContent = input.question + orientationBlock(input.orientation);
 
+  // System prompt → prior turns (conversation memory) → current question.
+  const history = (input.history ?? []).map((t) => ({
+    role: t.role,
+    content: t.content,
+  })) as OpenAI.Chat.ChatCompletionMessageParam[];
   const messages: OpenAI.Chat.ChatCompletionMessageParam[] = [
     { role: 'system', content: systemContent },
+    ...history,
     { role: 'user', content: userContent },
   ];
 

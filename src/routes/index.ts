@@ -7,6 +7,7 @@ import settingsRoutes from './settings';
 import userRoutes from './users';
 import dashboardRoutes from './dashboard';
 import documentRoutes from './documents';
+import conversationRoutes from './conversations';
 
 const api = Router();
 
@@ -20,5 +21,6 @@ api.use('/announcements', requireAuth, announcementRoutes);
 api.use('/ai-settings', requireAuth, settingsRoutes);
 api.use('/users', requireAuth, userRoutes);
 api.use('/documents', requireAuth, documentRoutes);
+api.use('/conversations', requireAuth, conversationRoutes);
 
 export default api;

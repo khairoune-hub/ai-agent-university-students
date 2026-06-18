@@ -15,6 +15,18 @@ CREATE TABLE IF NOT EXISTS users (
 
 CREATE INDEX IF NOT EXISTS idx_users_telegram_id ON users (telegram_id);
 
+-- Per-user conversation history so the bot remembers previous turns.
+CREATE TABLE IF NOT EXISTS chat_messages (
+  id          BIGSERIAL PRIMARY KEY,
+  telegram_id BIGINT NOT NULL,
+  role        TEXT NOT NULL,   -- 'user' | 'assistant'
+  content     TEXT NOT NULL,
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_chat_messages_user
+  ON chat_messages (telegram_id, created_at DESC);
+
 -- Knowledge base articles injected into AI prompts via keyword search
 CREATE TABLE IF NOT EXISTS articles (
   id          BIGSERIAL PRIMARY KEY,

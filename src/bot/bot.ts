@@ -7,6 +7,7 @@ import {
   setOrientationData,
 } from '../services/usersService';
 import { generateReply } from '../services/aiService';
+import { getRecentHistory, appendTurns } from '../services/messagesService';
 import { OrientationData } from '../services/types';
 
 // ── Orientation questionnaire state ─────────────────────────
@@ -110,11 +111,18 @@ export function createBot(): Bot {
     }, 4000);
     try {
       const user = await getUserByTelegramId(id);
+      const history = await getRecentHistory(id);
       const answer = await generateReply({
         question: text,
         orientation: user?.orientation_data ?? null,
+        history,
       });
       await sendLong(ctx, answer);
+      // Persist the turn so the bot remembers it (and the admin can review it).
+      await appendTurns(id, [
+        { role: 'user', content: text },
+        { role: 'assistant', content: answer },
+      ]).catch((err) => console.error('[bot] appendTurns failed', err));
       console.log(`[bot] ✓ answered ${who} in ${Date.now() - startedAt}ms`);
     } catch (err) {
       console.error(`[bot] ✗ failed to answer ${who}:`, err);
