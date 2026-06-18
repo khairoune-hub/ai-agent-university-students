@@ -44,8 +44,10 @@ async function main() {
     process.exit(1);
   }
 
-  app.listen(env.port, () => {
-    console.log(`[api] Listening on http://localhost:${env.port}`);
+  // Bind to 0.0.0.0 (all interfaces), not just localhost — required for the
+  // platform proxy (Railway/Render/etc.) to reach the app from outside.
+  app.listen(env.port, '0.0.0.0', () => {
+    console.log(`[api] Listening on 0.0.0.0:${env.port}`);
   });
 
   // Back-fill embeddings for any PDFs uploaded before embeddings were configured
