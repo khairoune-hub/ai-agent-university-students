@@ -114,7 +114,7 @@ export function createBot(): Bot {
         question: text,
         orientation: user?.orientation_data ?? null,
       });
-      await ctx.reply(answer);
+      await sendLong(ctx, answer);
       console.log(`[bot] ✓ answered ${who} in ${Date.now() - startedAt}ms`);
     } catch (err) {
       console.error(`[bot] ✗ failed to answer ${who}:`, err);
@@ -130,6 +130,42 @@ export function createBot(): Bot {
 
   bot = b;
   return b;
+}
+
+// Telegram caps messages at 4096 chars. Split long answers (e.g. an exhaustive
+// program list) into multiple messages on line boundaries — never truncate.
+const TG_LIMIT = 3900;
+
+function splitText(text: string, limit = TG_LIMIT): string[] {
+  if (text.length <= limit) return [text];
+  const chunks: string[] = [];
+  let cur = '';
+  for (const line of text.split('\n')) {
+    if (line.length > limit) {
+      if (cur) {
+        chunks.push(cur);
+        cur = '';
+      }
+      for (let i = 0; i < line.length; i += limit) chunks.push(line.slice(i, i + limit));
+      continue;
+    }
+    if ((cur ? cur.length + 1 : 0) + line.length > limit) {
+      chunks.push(cur);
+      cur = line;
+    } else {
+      cur = cur ? `${cur}\n${line}` : line;
+    }
+  }
+  if (cur) chunks.push(cur);
+  return chunks;
+}
+
+async function sendLong(ctx: any, text: string): Promise<void> {
+  const parts = splitText(text);
+  for (const part of parts) {
+    await ctx.reply(part);
+    if (parts.length > 1) await new Promise((r) => setTimeout(r, 250));
+  }
 }
 
 async function handleOrientationStep(
