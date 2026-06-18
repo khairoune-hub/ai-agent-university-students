@@ -180,13 +180,44 @@ export async function broadcast(
 export async function startBot(): Promise<void> {
   const b = bot ?? createBot();
   // Make commands appear in the Telegram UI menu
-  await b.api.setMyCommands([
-    { command: 'start', description: 'بدء استخدام البوت' },
-    { command: 'orientation', description: 'استبيان التوجيه' },
-    { command: 'help', description: 'المساعدة' },
-  ]);
-  // Long polling (no webhook needed for MVP). Don't await — it runs forever.
-  b.start({
-    onStart: (info) => console.log(`[bot] Started as @${info.username}`),
-  });
+  try {
+    await b.api.setMyCommands([
+      { command: 'start', description: 'بدء استخدام البوت' },
+      { command: 'orientation', description: 'استبيان التوجيه' },
+      { command: 'help', description: 'المساعدة' },
+    ]);
+  } catch (err: any) {
+    console.warn('[bot] setMyCommands failed (non-fatal):', err?.description ?? err);
+  }
+  // Launch polling in the background with retry. Crucially, a polling failure
+  // (e.g. 409 Conflict when another instance is running, or a transient network
+  // error) must NEVER crash the process — the API + admin panel keep working.
+  void pollWithRetry(b);
+}
+
+// Long polling (no webhook needed for MVP), made resilient.
+async function pollWithRetry(b: Bot, attempt = 0): Promise<void> {
+  try {
+    await b.start({
+      // Clear any backlog/leftover poller on (re)start.
+      drop_pending_updates: true,
+      onStart: (info) => console.log(`[bot] Started as @${info.username}`),
+    });
+  } catch (err: any) {
+    const isConflict = err?.error_code === 409;
+    if (isConflict && attempt < 12) {
+      // Usually a brief overlap during a redeploy — back off and retry so the
+      // bot recovers on its own once the other instance stops.
+      console.warn(
+        `[bot] 409 Conflict — another instance is polling. Retry ${attempt + 1}/12 in 5s...`
+      );
+      await new Promise((r) => setTimeout(r, 5000));
+      return pollWithRetry(b, attempt + 1);
+    }
+    // Give up polling but keep the API alive.
+    console.error(
+      '[bot] Polling stopped (API stays up). Cause:',
+      err?.description ?? err
+    );
+  }
 }
