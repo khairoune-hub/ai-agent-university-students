@@ -80,6 +80,12 @@ export function buildContext(articles: Article[], maxCharsPerArticle = 1200): st
 export interface DocChunkHit {
   content: string;
   title: string; // source document title
+  mode?: 'semantic' | 'keyword-fts' | 'keyword-ilike';
+}
+
+// One-line snippet for logging (collapses whitespace, truncates).
+function snippet(text: string, n = 90): string {
+  return text.replace(/\s+/g, ' ').trim().slice(0, n);
 }
 
 /**
@@ -107,7 +113,7 @@ export async function searchDocumentChunks(rawQuery: string, limit = 4): Promise
             LIMIT $2`,
           [toVectorLiteral(vec), limit]
         );
-        if (hits.length > 0) return hits;
+        if (hits.length > 0) return hits.map((h) => ({ ...h, mode: 'semantic' as const }));
       } catch (err) {
         console.warn('[kb] vector search failed, falling back to keyword:', err);
       }
@@ -124,14 +130,14 @@ export async function searchDocumentChunks(rawQuery: string, limit = 4): Promise
       LIMIT $2`,
     [q, limit]
   );
-  if (fts.length > 0) return fts;
+  if (fts.length > 0) return fts.map((h) => ({ ...h, mode: 'keyword-fts' as const }));
 
   const words = q.split(/\s+/).map((w) => w.replace(/[%_]/g, '').trim()).filter((w) => w.length >= 3);
   if (words.length === 0) return [];
   const conditions = words.map((_, i) => `c.content ILIKE $${i + 1}`);
   const params: string[] = words.map((w) => `%${w}%`);
   params.push(String(limit));
-  return query<DocChunkHit>(
+  const ilike = await query<DocChunkHit>(
     `SELECT c.content, d.title
        FROM document_chunks c
        JOIN documents d ON d.id = c.document_id
@@ -139,6 +145,7 @@ export async function searchDocumentChunks(rawQuery: string, limit = 4): Promise
       LIMIT $${params.length}`,
     params
   );
+  return ilike.map((h) => ({ ...h, mode: 'keyword-ilike' as const }));
 }
 
 export interface RetrievedContext {
@@ -169,6 +176,19 @@ export async function retrieveContext(questionText: string): Promise<RetrievedCo
       })
       .join('\n\n');
     parts.push(docCtx);
+  }
+
+  // ── RAG retrieval log: show exactly what was pulled into the prompt ──
+  const mode = chunks[0]?.mode ?? (chunks.length ? 'keyword' : '—');
+  console.log(
+    `[rag] q="${snippet(questionText, 80)}" | articles=${articles.length} docChunks=${chunks.length} (${mode})`
+  );
+  articles.forEach((a, i) => console.log(`[rag]   article#${i + 1}: ${a.title} (${a.category})`));
+  chunks.forEach((c, i) =>
+    console.log(`[rag]   chunk#${i + 1} «${c.title}»: ${snippet(c.content)}`)
+  );
+  if (articles.length === 0 && chunks.length === 0) {
+    console.log('[rag]   ⚠ no context found — the model will answer without RAG grounding');
   }
 
   return {
