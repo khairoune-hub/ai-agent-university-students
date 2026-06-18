@@ -97,8 +97,13 @@ export function createBot(): Bot {
       return;
     }
 
-    // Normal question → AI
+    // Normal question → AI.
+    // Telegram's "typing" action only lasts ~5s, but a reply can take ~10s+,
+    // so re-send it every 4s until the answer is ready.
     await ctx.replyWithChatAction('typing');
+    const typing = setInterval(() => {
+      ctx.replyWithChatAction('typing').catch(() => {});
+    }, 4000);
     try {
       const user = await getUserByTelegramId(id);
       const answer = await generateReply({
@@ -109,6 +114,8 @@ export function createBot(): Bot {
     } catch (err) {
       console.error('[bot] generateReply failed', err);
       await ctx.reply(messages.error);
+    } finally {
+      clearInterval(typing);
     }
   });
 

@@ -10,6 +10,10 @@ import { OrientationData } from './types';
 const client = new OpenAI({
   apiKey: env.openRouterApiKey,
   baseURL: 'https://openrouter.ai/api/v1',
+  // Never hang forever: if a model is slow/queued (some free models are),
+  // fail after 45s so the bot can tell the user instead of going silent.
+  timeout: 45_000,
+  maxRetries: 1,
   defaultHeaders: {
     ...(env.openRouterSiteUrl ? { 'HTTP-Referer': env.openRouterSiteUrl } : {}),
     'X-Title': env.openRouterAppName,
@@ -55,15 +59,26 @@ export async function generateReply(input: AiReplyInput): Promise<string> {
 
   const userContent = input.question + orientationBlock(input.orientation);
 
-  const completion = await client.chat.completions.create({
-    model: settings.model,
-    temperature: settings.temperature,
-    messages: [
-      { role: 'system', content: systemContent },
-      { role: 'user', content: userContent },
-    ],
-  });
+  try {
+    const completion = await client.chat.completions.create({
+      model: settings.model,
+      temperature: settings.temperature,
+      max_tokens: 800,
+      messages: [
+        { role: 'system', content: systemContent },
+        { role: 'user', content: userContent },
+      ],
+    });
 
-  const text = completion.choices[0]?.message?.content?.trim();
-  return text || 'عذرًا، لم أتمكّن من توليد إجابة. حاول إعادة صياغة سؤالك.';
+    const text = completion.choices[0]?.message?.content?.trim();
+    if (text) return text;
+    // Some (often free/queued) models return an empty completion.
+    console.warn(`[ai] Empty completion from model "${settings.model}"`);
+    return 'عذرًا، لم أتمكّن من توليد إجابة الآن. حاول إعادة صياغة سؤالك بعد قليل.';
+  } catch (err: any) {
+    // Surface the real cause in logs (model not found, rate limit, timeout…)
+    const detail = err?.error?.message ?? err?.message ?? String(err);
+    console.error(`[ai] OpenRouter call failed (model "${settings.model}"):`, detail);
+    return 'عذرًا، تعذّر الوصول إلى خدمة الذكاء الاصطناعي حاليًا. حاول مرة أخرى بعد قليل.';
+  }
 }
