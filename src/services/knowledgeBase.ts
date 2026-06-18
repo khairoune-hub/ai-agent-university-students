@@ -92,11 +92,13 @@ export async function searchDocumentChunks(rawQuery: string, limit = 4): Promise
   if (!q) return [];
 
   // Semantic path: needs the vector column AND a usable embeddings provider.
+  // Only RETURN from here if it actually finds something — otherwise fall
+  // through to keyword search (e.g. chunks that aren't embedded yet).
   if ((await hasVectorColumn()) && embeddingsConfigured()) {
     const vec = await embedOne(q);
     if (vec) {
       try {
-        return await query<DocChunkHit>(
+        const hits = await query<DocChunkHit>(
           `SELECT c.content, d.title
              FROM document_chunks c
              JOIN documents d ON d.id = c.document_id
@@ -105,13 +107,14 @@ export async function searchDocumentChunks(rawQuery: string, limit = 4): Promise
             LIMIT $2`,
           [toVectorLiteral(vec), limit]
         );
+        if (hits.length > 0) return hits;
       } catch (err) {
         console.warn('[kb] vector search failed, falling back to keyword:', err);
       }
     }
   }
 
-  // Keyword fallback (full-text, then ILIKE).
+  // Keyword fallback (full-text, then ILIKE) — also covers not-yet-embedded chunks.
   const fts = await query<DocChunkHit>(
     `SELECT c.content, d.title
        FROM document_chunks c

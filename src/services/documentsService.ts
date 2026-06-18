@@ -1,7 +1,7 @@
 import { PDFParse } from 'pdf-parse';
 import { pool, query, queryOne } from '../db/pool';
 import { splitIntoChunks } from './chunking';
-import { embedTexts, toVectorLiteral } from './embeddings';
+import { embedTexts, toVectorLiteral, embeddingsConfigured } from './embeddings';
 import { hasVectorColumn } from './vectorStatus';
 
 export interface DocumentRow {
@@ -123,6 +123,27 @@ async function embedDocument(documentId: number): Promise<boolean> {
     await query('UPDATE documents SET embedded = true WHERE id = $1', [documentId]);
   }
   return anyEmbedded;
+}
+
+/**
+ * Back-fill embeddings for documents that were uploaded before embeddings were
+ * configured (embedded = false). Best-effort; safe to call on startup.
+ */
+export async function embedPendingDocuments(): Promise<void> {
+  if (!(await hasVectorColumn()) || !embeddingsConfigured()) return;
+  const pending = await query<{ id: number; title: string }>(
+    'SELECT id, title FROM documents WHERE embedded = false'
+  );
+  if (pending.length === 0) return;
+  console.log(`[docs] back-filling embeddings for ${pending.length} document(s)...`);
+  for (const d of pending) {
+    try {
+      const ok = await embedDocument(d.id);
+      console.log(`[docs] "${d.title}" — embedded=${ok}`);
+    } catch (err) {
+      console.warn(`[docs] back-fill failed for "${d.title}":`, err);
+    }
+  }
 }
 
 export async function listDocuments(): Promise<DocumentRow[]> {

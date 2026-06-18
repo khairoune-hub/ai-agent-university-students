@@ -4,6 +4,7 @@ import { env } from './config/env';
 import api from './routes';
 import { startBot } from './bot/bot';
 import { pool } from './db/pool';
+import { embedPendingDocuments } from './services/documentsService';
 
 async function main() {
   const app = express();
@@ -46,6 +47,12 @@ async function main() {
   app.listen(env.port, () => {
     console.log(`[api] Listening on http://localhost:${env.port}`);
   });
+
+  // Back-fill embeddings for any PDFs uploaded before embeddings were configured
+  // (best-effort, non-blocking — the API/bot start immediately).
+  void embedPendingDocuments().catch((err) =>
+    console.warn('[docs] back-fill error:', err)
+  );
 
   // Start the Telegram bot (long polling) unless disabled
   if (env.botEnabled) {

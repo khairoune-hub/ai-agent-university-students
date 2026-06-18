@@ -72,20 +72,26 @@ export async function generateReply(input: AiReplyInput): Promise<string> {
     `[ai] model=${settings.model} | articles=${articleCount} docChunks=${chunkCount} | temp=${settings.temperature}`
   );
 
-  // Always enforce a SHORT, direct answer on top of the admin's system prompt.
-  // Never reveal reasoning/thinking — only the final answer.
-  const BREVITY =
-    '\n\n[تعليمات صارمة للأسلوب]\n' +
+  // Style + grounding rules layered on top of the admin's system prompt.
+  const STYLE =
+    '\n\n[تعليمات صارمة]\n' +
     '- أجب مباشرة بالإجابة النهائية فقط، دون إظهار أي تفكير أو خطوات داخلية.\n' +
     '- كن مختصرًا جدًا: من سطرين إلى أربعة أسطر، أو نقاط قصيرة عند الحاجة.\n' +
-    '- لا تذكر أسماء المستندات أو الجداول أو عبارات مثل "حسب السياق"، فقط أعطِ الخلاصة المفيدة للطالب.';
+    '- لا تذكر أسماء المستندات أو الجداول، فقط أعطِ الخلاصة المفيدة للطالب.';
+
+  // Anti-bluff: when we have retrieved context, force the model to ground its
+  // answer in it; otherwise forbid inventing official figures/dates.
+  const GROUNDING = context
+    ? '\n- اعتمد في إجابتك على "المعلومات المرفقة" أدناه. إذا لم تكفِ للإجابة، قل بوضوح إنك غير متأكد وانصح بمراجعة المصدر الرسمي، ولا تخترع أرقامًا أو شروطًا.'
+    : '\n- لا تملك معلومات مرفقة لهذا السؤال. أجب بمعلومات عامة موثوقة فقط، ولا تخترع تواريخ أو عتبات أو إجراءات رسمية؛ وإن لزم رقم رسمي محدد، انصح بمراجعة البوابة الرسمية للتوجيه.';
 
   const systemContent =
     settings.system_prompt +
     (context
-      ? `\n\n---\nمعلومات من قاعدة المعارف (استعملها عند الإجابة إن كانت ذات صلة):\n${context}`
+      ? `\n\n---\n[المعلومات المرفقة من قاعدة المعارف والمستندات — استند إليها]:\n${context}`
       : '') +
-    BREVITY;
+    STYLE +
+    GROUNDING;
 
   const userContent = input.question + orientationBlock(input.orientation);
 
