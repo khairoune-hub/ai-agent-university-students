@@ -3,6 +3,7 @@ import { asyncHandler } from '../middleware/asyncHandler';
 import { countUsers, listUsers } from '../services/usersService';
 import { countArticles } from '../services/articlesService';
 import { listAnnouncements } from '../services/announcementsService';
+import { countDocuments } from '../services/documentsService';
 
 const router = Router();
 
@@ -10,9 +11,10 @@ const router = Router();
 router.get(
   '/',
   asyncHandler(async (_req, res) => {
-    const [users, articles, announcements, recentUsers] = await Promise.all([
+    const [users, articles, documents, announcements, recentUsers] = await Promise.all([
       countUsers(),
       countArticles(),
+      countDocuments(),
       listAnnouncements(),
       listUsers(5, 0),
     ]);
@@ -20,6 +22,7 @@ router.get(
       stats: {
         users,
         articles,
+        documents,
         announcements: announcements.length,
         announcementsSent: announcements.filter((a) => a.sent_at).length,
       },

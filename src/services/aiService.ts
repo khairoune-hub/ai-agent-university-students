@@ -1,7 +1,7 @@
 import OpenAI from 'openai';
 import { env } from '../config/env';
 import { getAiSettings } from './settingsService';
-import { searchArticles, buildContext } from './knowledgeBase';
+import { retrieveContext } from './knowledgeBase';
 import { OrientationData } from './types';
 
 // OpenRouter is OpenAI-API-compatible, so we reuse the official SDK with a
@@ -48,10 +48,9 @@ export async function generateReply(input: AiReplyInput): Promise<string> {
   }
 
   const settings = await getAiSettings();
-  const articles = await searchArticles(input.question);
-  const context = buildContext(articles);
+  const { context, articleCount, chunkCount } = await retrieveContext(input.question);
   console.log(
-    `[ai] model=${settings.model} | KB matches=${articles.length} | temp=${settings.temperature}`
+    `[ai] model=${settings.model} | articles=${articleCount} docChunks=${chunkCount} | temp=${settings.temperature}`
   );
 
   // Always enforce a concise, well-structured answer on top of the admin's

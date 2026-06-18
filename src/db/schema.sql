@@ -54,3 +54,32 @@ CREATE TABLE IF NOT EXISTS ai_settings (
   -- Enforce a single settings row
   CONSTRAINT ai_settings_singleton CHECK (id = 1)
 );
+
+-- ── RAG: uploaded documents (PDFs) and their text chunks ────
+-- An uploaded source document (e.g. a PDF the admin uploads).
+CREATE TABLE IF NOT EXISTS documents (
+  id          BIGSERIAL PRIMARY KEY,
+  title       TEXT NOT NULL,
+  filename    TEXT,
+  source_type TEXT NOT NULL DEFAULT 'pdf',
+  chunk_count INTEGER NOT NULL DEFAULT 0,
+  embedded    BOOLEAN NOT NULL DEFAULT false, -- true once chunks have vectors
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- Text chunks extracted from a document. The `embedding` vector column is added
+-- separately (and conditionally) in migrate.ts, since pgvector may be absent.
+CREATE TABLE IF NOT EXISTS document_chunks (
+  id          BIGSERIAL PRIMARY KEY,
+  document_id BIGINT NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
+  chunk_index INTEGER NOT NULL,
+  content     TEXT NOT NULL,
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_chunks_document ON document_chunks (document_id);
+
+-- Keyword fallback search over chunk text (works without pgvector).
+CREATE INDEX IF NOT EXISTS idx_chunks_search
+  ON document_chunks
+  USING GIN (to_tsvector('simple', coalesce(content, '')));
