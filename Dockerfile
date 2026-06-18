@@ -21,6 +21,8 @@ RUN npm ci --omit=dev && npm cache clean --force
 
 # Compiled output (includes dist/db/schema.sql)
 COPY --from=build /app/dist ./dist
+# Parsed orientation dataset, loaded by the import step in `release`.
+COPY data ./data
 
 EXPOSE 4000
 

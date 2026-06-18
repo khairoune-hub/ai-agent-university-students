@@ -83,3 +83,41 @@ CREATE INDEX IF NOT EXISTS idx_chunks_document ON document_chunks (document_id);
 CREATE INDEX IF NOT EXISTS idx_chunks_search
   ON document_chunks
   USING GIN (to_tsvector('simple', coalesce(content, '')));
+
+-- ── Structured orientation data (parsed from the official PDFs) ──
+-- These hold the BAC minimum-averages table as real relational rows so the bot
+-- can answer aggregation queries ("all institutions offering X") exhaustively,
+-- instead of top-k RAG which can only return a few examples.
+
+CREATE TABLE IF NOT EXISTS institutions (
+  code             TEXT PRIMARY KEY,        -- e.g. 'U12', 'P04', 'C99'
+  name             TEXT NOT NULL,
+  wilaya           TEXT,
+  institution_type TEXT NOT NULL,           -- universite | ecole_nationale_superieure |
+                                            -- ecole_normale_superieure | institut |
+                                            -- centre_universitaire | centre_formation |
+                                            -- recrutement_national | autre
+  created_at       TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS specialties (
+  filiere_code  TEXT PRIMARY KEY,           -- e.g. 'C01LAL01'
+  filiere_name  TEXT NOT NULL,              -- e.g. 'INFORMATIQUE'
+  domain        TEXT
+);
+
+CREATE TABLE IF NOT EXISTS offerings (
+  id               BIGSERIAL PRIMARY KEY,
+  institution_code TEXT NOT NULL REFERENCES institutions(code) ON DELETE CASCADE,
+  filiere_code     TEXT NOT NULL REFERENCES specialties(filiere_code) ON DELETE CASCADE,
+  min1             NUMERIC,
+  min2             NUMERIC,
+  min3             NUMERIC,
+  year             INTEGER NOT NULL,
+  UNIQUE (institution_code, filiere_code, year)
+);
+
+CREATE INDEX IF NOT EXISTS idx_offerings_filiere ON offerings (filiere_code);
+CREATE INDEX IF NOT EXISTS idx_offerings_institution ON offerings (institution_code);
+-- Trigram indexes for fuzzy keyword matching are created in migrate.ts (they
+-- need the pg_trgm extension, which — like pgvector — may not be present).

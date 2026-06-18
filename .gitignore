@@ -32,3 +32,7 @@ coverage/
 
 # Frontend admin panel is kept local-only (separate repo later)
 admin/
+
+# Large source PDFs — the committed artifact is data/*.json (produced by
+# scripts/extract_minimums.py). Keep the PDFs locally to re-run the ETL.
+*.pdf

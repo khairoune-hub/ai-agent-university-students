@@ -30,6 +30,23 @@ async function migrate() {
     );
   }
 
+  // Try to enable pg_trgm for fuzzy keyword search over institution/specialty
+  // names. Optional: ILIKE still works without it (just slower / no fuzziness).
+  try {
+    await pool.query('CREATE EXTENSION IF NOT EXISTS pg_trgm');
+    await pool.query(
+      `CREATE INDEX IF NOT EXISTS idx_specialties_name_trgm
+         ON specialties USING GIN (filiere_name gin_trgm_ops)`
+    );
+    await pool.query(
+      `CREATE INDEX IF NOT EXISTS idx_institutions_name_trgm
+         ON institutions USING GIN (name gin_trgm_ops)`
+    );
+    console.log('[migrate] pg_trgm enabled (fuzzy name search).');
+  } catch (err: any) {
+    console.warn('[migrate] pg_trgm unavailable — name search uses ILIKE only. Reason:', err?.message ?? err);
+  }
+
   // Heal a stale model: if we're configured for OpenAI but the saved model is an
   // OpenRouter-style id (contains "/" or ":"), reset it to a valid OpenAI model.
   if (env.llmIsOpenAI) {
